@@ -70,6 +70,12 @@ public:
     //
     return truncate(hmac_sha1(std::to_string(T))) % 1000000;
   }
+
+  time_t get_next_tick() const {
+    auto now = time(nullptr);
+    auto T = (now - 0) / step;
+    return (T + 1) * step - now;
+  }
 };
 
 #endif // _OTP_HPP

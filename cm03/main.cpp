@@ -6,10 +6,11 @@
 #endif
 #include "OTP.hpp"
 
+enum { ID_BTN = 1 };
+
 class MyFrame : public wxFrame {
 private:
   std::unique_ptr<TOTP> otp = std::unique_ptr<TOTP>(new TOTP("secret", 10));
-  wxTimer *timer = new wxTimer();
 
   wxPanel *panel = nullptr;
   wxTextCtrl *txtCtrl = nullptr;
@@ -18,7 +19,7 @@ private:
   wxBoxSizer *vbox = nullptr;
 
 public:
-  MyFrame() : wxFrame(NULL, wxID_ANY, wxT("Hello World")) {
+  MyFrame() : wxFrame(NULL, wxID_ANY, wxT("Simple TOTP Checker")) {
     SetWindowStyle(wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX));
 
     wxColour col1, col2;
@@ -36,7 +37,7 @@ public:
     label = new wxStaticText(panel, wxID_ANY, wxT("input serial here"));
     label->SetForegroundColour(wxColour(wxT("#dcdcdc")));
 
-    btn = new wxButton(panel, wxID_ANY, wxT("try it!"));
+    btn = new wxButton(panel, ID_BTN, wxT("try it!"));
     btn->SetBackgroundColour(col1);
     btn->SetForegroundColour(wxColour(wxT("#8fb2bf")));
 
@@ -48,21 +49,20 @@ public:
     panel->SetMaxSize(panel->GetBestSize());
     panel->SetMinSize(panel->GetBestSize());
 
-    timer->SetOwner(this);
-    timer->Start(1000);
-
-    this->Connect(wxEVT_TIMER, wxTimerEventHandler(MyFrame::onTimer));
+    btn->Bind(wxEVT_BUTTON, &MyFrame::onClick, this);
 
     Centre();
   }
 
-  void onTimer(wxTimerEvent &ev) {
-    auto s = wxString::Format("serial answer: %06d", otp->get());
-    this->label->SetLabelText(s);
+  void onClick(wxCommandEvent &ev) {
+    auto s = wxString::Format("%06d", otp->get());
+    if (txtCtrl->GetValue() == s) {
+      wxMessageBox("Correct!", "Good job!");
+    } else {
+      wxMessageBox("Wrong!", "Try again!");
+    }
     return;
   }
-
-  virtual ~MyFrame() { delete timer; }
 
 private:
 };

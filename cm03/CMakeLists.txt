@@ -19,3 +19,7 @@ target_link_libraries(cm03-hard PRIVATE ${wxWidgets_LIBRARIES} OpenSSL::SSL Open
 
 add_executable("cm03-test" "test.cpp")
 target_link_libraries("cm03-test" PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
+
+add_executable("cm03-totp" WIN32 "totp.cpp")
+target_link_libraries(cm03-totp PRIVATE ${wxWidgets_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto)
+
