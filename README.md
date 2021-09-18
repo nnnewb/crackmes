@@ -1,0 +1,6 @@
+# crackmes
+
+## build
+
+`vcpkg` required.
+
