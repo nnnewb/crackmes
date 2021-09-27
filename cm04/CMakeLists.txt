@@ -1,0 +1,15 @@
+find_package(wxWidgets REQUIRED)
+
+add_executable(cm04 WIN32 main.cpp)
+target_include_directories(cm04 PRIVATE ${wxWidgets_INCLUDE_DIRS})
+target_link_libraries(cm04 PRIVATE ${wxWidgets_LIBRARIES})
+if(${CMAKE_BUILD_TYPE} MATCHES Release|RelWithDeb)
+	target_compile_options(cm04 PRIVATE /MD /Wall)
+elseif(${CMAKE_BUILD_TYPE} MATCHES Debug)
+	target_compile_options(cm04 PRIVATE /MDd /Wall)
+endif()
+
+add_executable(loader loader.c)
+add_executable(loader_2 loader_2.c)
+target_compile_options(loader_2 PRIVATE /Wall /GS-)
+target_link_options(loader_2 PRIVATE /NODEFAULTLIB /ENTRY:_start)

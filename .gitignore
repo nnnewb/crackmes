@@ -101,3 +101,5 @@ out
 .vscode
 CMakeSettings.json
 build
+
+venv
