@@ -106,7 +106,7 @@ void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
     HMODULE import_module = LoadLibraryA(module_name);
     if (import_module == NULL) {
       // panic!
-      ExitProcess(-1);
+      ExitProcess(255);
     }
 
     // the lookup table points to function names or ordinals => it is the IDT
@@ -136,7 +136,7 @@ void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
       }
 
       if (function_handle == NULL) {
-        ExitProcess(-1);
+        ExitProcess(255);
       }
 
       // change the IAT, and put the function address inside.
@@ -166,7 +166,7 @@ void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
       DWORD size = (p_reloc->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2;
       // the first relocation element in the block, right after the header (using pointer arithmetic again)
       WORD *fixups = (WORD *)(p_reloc + 1);
-      for (int i = 0; i < size; ++i) {
+      for (size_t i = 0; i < size; ++i) {
         // type is the first 4 bits of the relocation word
         int type = fixups[i] >> 12;
         // offset is the last 12 bits
