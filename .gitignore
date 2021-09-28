@@ -103,3 +103,4 @@ CMakeSettings.json
 build
 
 venv
+LIEF-*
