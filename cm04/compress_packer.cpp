@@ -48,6 +48,7 @@ std::vector<uint8_t> compress(const std::vector<uint8_t> &raw) {
     MessageBoxA(0, "unexpected compress error", "compress fail", MB_OK);
     ExitProcess(255);
   }
+  compressed_buffer.resize(compressed_size, 0);
 
   // save before/after compress size for decompression
   compressed_buffer.insert(compressed_buffer.begin(), {
@@ -81,7 +82,7 @@ int main(int argc, const char *argv[]) {
 
   auto builder = LIEF::PE::Builder::Builder(loader_binary.get());
   builder.build();
-  builder.write("packed.exe");
+  builder.write("compress-packed.exe");
 
   return 0;
 }
