@@ -29,11 +29,28 @@ target_link_options(loader_2 PRIVATE /NODEFAULTLIB /ENTRY:_start)
 
 add_executable(packer packer.cpp)
 if(MSVC)
-	target_compile_options(packer PRIVATE /FIiso646.h /MT)
-	set_property(TARGET packer PROPERTY LINK_FLAGS /NODEFAULTLIB:MSVCRT)
+	target_compile_options(packer PRIVATE /FIiso646.h)
 endif()
 target_include_directories(packer PRIVATE ${LIEF_INCLUDE_DIRS})
 set_property(TARGET packer
 			PROPERTY CXX_STANDARD 11
 			PROPERTY CXX_STANDARD_REQUIRED ON)
 target_link_libraries(packer PRIVATE ${LIEF_LIBRARIES})
+
+find_package(lzokay CONFIG REQUIRED)
+
+add_executable(compress_packer compress_packer.cpp)
+if(MSVC)
+	target_compile_options(compress_packer PRIVATE /FIiso646.h)
+endif()
+target_include_directories(compress_packer PRIVATE ${LIEF_INCLUDE_DIRS})
+set_property(TARGET compress_packer
+			PROPERTY CXX_STANDARD 14
+			PROPERTY CXX_STANDARD_REQUIRED ON)
+target_link_libraries(compress_packer PRIVATE ${LIEF_LIBRARIES} lzokay::lzokay Cabinet.lib)
+
+add_executable(compress_loader WIN32 compress_loader.cpp)
+set_property(TARGET compress_loader PROPERTY CXX_STANDARD 14 PROPERTY CXX_STANDARD_REQUIRED ON)
+target_link_libraries(compress_loader PRIVATE lzokay::lzokay Cabinet.lib)
+target_link_options(compress_loader PRIVATE /ENTRY:_start Cabinet.lib)
+
