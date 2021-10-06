@@ -1,6 +1,7 @@
 #include <LIEF/LIEF.hpp>
 #include <Windows.h>
 #include <vector>
+#include <string>
 
 std::vector<uint8_t> read_file(const std::string &path) {
   auto h = CreateFile(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);

@@ -1,40 +1,67 @@
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <compressapi.h>
 #include <winnt.h>
+#pragma runtime_checks("",off)
 
-void *load_PE(char *PE_data);
-void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
-void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
+void decompress(BYTE *src, DWORD src_size, BYTE *dest, DWORD dest_size, DWORD &decompressed_size);
+void *load_PE(BYTE *PE_data);
+void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
+void fix_base_reloc(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
 int mystrcmp(const char *str1, const char *str2);
-void mymemcpy(char *dest, const char *src, size_t length);
+void mymemcpy(BYTE *dest, const BYTE *src, size_t length);
 
-int _start(void) {
-  char *unpacker_VA = (char *)GetModuleHandleA(NULL);
+int _start() {
+  BYTE *loader_image_base = (BYTE *)GetModuleHandleA(nullptr);
 
-  IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA;
-  IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header->e_lfanew);
-  IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1);
+  auto p_DOS_header = (IMAGE_DOS_HEADER *)loader_image_base;
+  auto p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)loader_image_base) + p_DOS_header->e_lfanew);
+  auto sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1);
 
-  char *packed = NULL;
-  char packed_section_name[] = ".packed";
+  BYTE *packed = nullptr;
 
-  for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; i++) {
-    if (mystrcmp(sections[i].Name, packed_section_name) == 0) {
-      packed = unpacker_VA + sections[i].VirtualAddress;
-      break;
+  if (p_NT_headers->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) {
+    char packed_section_name[] = ".packed";
+    MessageBoxA(nullptr, "dynamic base", "dynamic base", MB_OK);
+    for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; i++) {
+      if (mystrcmp((const char *)sections[i].Name, packed_section_name) == 0) {
+        packed = loader_image_base + sections[i].VirtualAddress;
+        break;
+      }
     }
+  } else {
+    packed = loader_image_base + sections[0].VirtualAddress;
   }
 
-  if (packed != NULL) {
-    void (*entrypoint)(void) = (void (*)(void))load_PE(packed);
+  if (packed != nullptr) {
+    // first 4 bytes is decompressed size
+    DWORD decompressed_size = *((DWORD *)packed);
+    decompressed_size = (decompressed_size & (0xff << 24)) | (decompressed_size & (0xff << 16)) |
+                        (decompressed_size & (0xff << 8)) | (decompressed_size & 0xff);
+
+    // second 4 bytes is compressed size
+    DWORD compressed_size = *((DWORD *)(packed + 4));
+    compressed_size = (compressed_size & (0xff << 24)) | (compressed_size & (0xff << 16)) |
+                      (compressed_size & (0xff << 8)) | (compressed_size & 0xff);
+
+    // allocate memory
+    BYTE *decompressed = (BYTE *)VirtualAlloc(nullptr, decompressed_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+    // decompress
+    DWORD true_decompressed_size = 0;
+    decompress(packed + 8, compressed_size, decompressed, decompressed_size, true_decompressed_size);
+
+    // finally load
+    auto entrypoint = (void(*)())load_PE(decompressed);
     entrypoint();
   }
 
   return 0;
 }
 
-void *load_PE(char *PE_data) {
-  IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)PE_data;
-  IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(PE_data + p_DOS_header->e_lfanew);
+void *load_PE(BYTE *PE_data) {
+  auto *p_DOS_header = (IMAGE_DOS_HEADER *)PE_data;
+  auto *p_NT_headers = (IMAGE_NT_HEADERS *)(PE_data + p_DOS_header->e_lfanew);
 
   // extract information from PE header
   DWORD size_of_image = p_NT_headers->OptionalHeader.SizeOfImage;
@@ -43,21 +70,21 @@ void *load_PE(char *PE_data) {
 
   // allocate memory
   // https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
-  char *p_image_base = (char *)VirtualAlloc(NULL, size_of_image, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-  if (p_image_base == NULL) {
-    return NULL;
+  BYTE *p_image_base = (BYTE *)VirtualAlloc(nullptr, size_of_image, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  if (p_image_base == nullptr) {
+    return nullptr;
   }
 
   // copy PE headers in memory
   mymemcpy(p_image_base, PE_data, size_of_headers);
 
   // Section headers starts right after the IMAGE_NT_HEADERS struct, so we do some pointer arithmetic-fu here.
-  IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1);
+  auto *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1);
 
   for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; i++) {
     // calculate the VA we need to copy the content, from the RVA
     // section[i].VirtualAddress is a RVA, mind it
-    char *dest = p_image_base + sections[i].VirtualAddress;
+    BYTE *dest = p_image_base + sections[i].VirtualAddress;
 
     // check if there is Raw data to copy
     if (sections[i].SizeOfRawData > 0) {
@@ -78,7 +105,7 @@ void *load_PE(char *PE_data) {
   VirtualProtect(p_image_base, p_NT_headers->OptionalHeader.SizeOfHeaders, PAGE_READONLY, &oldProtect);
 
   for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; ++i) {
-    char *dest = p_image_base + sections[i].VirtualAddress;
+    BYTE *dest = p_image_base + sections[i].VirtualAddress;
     DWORD s_perm = sections[i].Characteristics;
     DWORD v_perm = 0; // flags are not the same between virtal protect and the section header
     if (s_perm & IMAGE_SCN_MEM_EXECUTE) {
@@ -92,40 +119,40 @@ void *load_PE(char *PE_data) {
   return (void *)(p_image_base + entry_point_RVA);
 }
 
-void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
+void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   IMAGE_DATA_DIRECTORY *data_directory = p_NT_headers->OptionalHeader.DataDirectory;
 
   // load the address of the import descriptors array
-  IMAGE_IMPORT_DESCRIPTOR *import_descriptors =
+  auto import_descriptors =
       (IMAGE_IMPORT_DESCRIPTOR *)(p_image_base + data_directory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 
   // this array is null terminated
   for (int i = 0; import_descriptors[i].OriginalFirstThunk != 0; ++i) {
     // Get the name of the dll, and import it
-    char *module_name = p_image_base + import_descriptors[i].Name;
+    char *module_name = (char *)p_image_base + import_descriptors[i].Name;
     HMODULE import_module = LoadLibraryA(module_name);
-    if (import_module == NULL) {
+    if (import_module == nullptr) {
       // panic!
       ExitProcess(255);
     }
 
     // the lookup table points to function names or ordinals => it is the IDT
-    IMAGE_THUNK_DATA *lookup_table = (IMAGE_THUNK_DATA *)(p_image_base + import_descriptors[i].OriginalFirstThunk);
+    auto lookup_table = (IMAGE_THUNK_DATA *)(p_image_base + import_descriptors[i].OriginalFirstThunk);
 
     // the address table is a copy of the lookup table at first
     // but we put the addresses of the loaded function inside => that's the IAT
-    IMAGE_THUNK_DATA *address_table = (IMAGE_THUNK_DATA *)(p_image_base + import_descriptors[i].FirstThunk);
+    auto address_table = (IMAGE_THUNK_DATA *)(p_image_base + import_descriptors[i].FirstThunk);
 
     // null terminated array, again
     for (int i = 0; lookup_table[i].u1.AddressOfData != 0; ++i) {
-      void *function_handle = NULL;
+      void *function_handle = nullptr;
 
       // Check the lookup table for the adresse of the function name to import
       DWORD lookup_addr = lookup_table[i].u1.AddressOfData;
 
       if ((lookup_addr & IMAGE_ORDINAL_FLAG) == 0) { // if first bit is not 1
         // import by name : get the IMAGE_IMPORT_BY_NAME struct
-        IMAGE_IMPORT_BY_NAME *image_import = (IMAGE_IMPORT_BY_NAME *)(p_image_base + lookup_addr);
+        auto image_import = (IMAGE_IMPORT_BY_NAME *)(p_image_base + lookup_addr);
         // this struct points to the ASCII function name
         char *funct_name = (char *)&(image_import->Name);
         // get that function address from it's module and name
@@ -145,7 +172,7 @@ void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   }
 }
 
-void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
+void fix_base_reloc(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   IMAGE_DATA_DIRECTORY *data_directory = p_NT_headers->OptionalHeader.DataDirectory;
 
   // this is how much we shifted the ImageBase
@@ -155,7 +182,7 @@ void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   if (data_directory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress != 0 && delta_VA_reloc != 0) {
 
     // calculate the relocation table address
-    IMAGE_BASE_RELOCATION *p_reloc =
+    auto p_reloc =
         (IMAGE_BASE_RELOCATION *)(p_image_base + data_directory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 
     // once again, a null terminated array
@@ -172,7 +199,7 @@ void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
         // offset is the last 12 bits
         int offset = fixups[i] & 0x0fff;
         // this is the address we are going to change
-        DWORD *change_addr = (DWORD *)(p_image_base + p_reloc->VirtualAddress + offset);
+        auto change_addr = (DWORD *)(p_image_base + p_reloc->VirtualAddress + offset);
 
         // there is only one type used that needs to make a change
         switch (type) {
@@ -190,6 +217,21 @@ void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   }
 }
 
+void decompress(BYTE *src, DWORD src_size, BYTE *dest, DWORD dest_size, DWORD &decompressed_size) {
+  DECOMPRESSOR_HANDLE decompressor = nullptr;
+  auto success = CreateDecompressor(COMPRESS_ALGORITHM_XPRESS_HUFF, nullptr, &decompressor);
+  if (!success) {
+    MessageBoxA(nullptr, "create decompressor fail", "decompress fail", MB_OK);
+    ExitProcess(255);
+  }
+
+  success = Decompress(decompressor, src, src_size, dest, dest_size, &decompressed_size);
+  if (!success) {
+    MessageBoxA(nullptr, "decompress fail", "decompress fail", MB_OK);
+    ExitProcess(255);
+  }
+}
+
 int mystrcmp(const char *str1, const char *str2) {
   while (*str1 == *str2 && *str1 != 0) {
     str1++;
@@ -201,7 +243,7 @@ int mystrcmp(const char *str1, const char *str2) {
   return -1;
 }
 
-void mymemcpy(char *dest, const char *src, size_t length) {
+void mymemcpy(BYTE *dest, const BYTE *src, size_t length) {
   for (size_t i = 0; i < length; i++) {
     dest[i] = src[i];
   }

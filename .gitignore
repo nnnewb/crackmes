@@ -104,3 +104,10 @@ build
 
 venv
 LIEF-*
+/cmake-build-debug/
+/cmake-build-debug-mingw-32/
+/cmake-build-debug-visual-studio/
+/cmake-build-release-mingw-32/
+/cmake-build-release-visual-studio/
+/cmake-build-relwithdebinfo-mingw-32/
+/cmake-build-relwithdebinfo-visual-studio/

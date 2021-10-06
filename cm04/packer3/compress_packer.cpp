@@ -5,14 +5,14 @@
 
 std::vector<uint8_t> read_file(const std::string &path) {
   auto h = CreateFile(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-  DWORD readbyte = 0;
+  DWORD read_count = 0;
   auto filesize = GetFileSize(h, nullptr);
   auto content = std::vector<uint8_t>();
   content.resize(filesize, 0);
-  if (!ReadFile(h, content.data(), filesize, &readbyte, nullptr)) {
+  if (!ReadFile(h, content.data(), filesize, &read_count, nullptr)) {
     abort();
   }
-  if (readbyte != filesize) {
+  if (read_count != filesize) {
     abort();
   }
 
@@ -22,10 +22,10 @@ std::vector<uint8_t> read_file(const std::string &path) {
 
 std::vector<uint8_t> compress(const std::vector<uint8_t> &raw) {
   std::vector<uint8_t> compressed_buffer;
-  COMPRESSOR_HANDLE compressor = 0;
+  COMPRESSOR_HANDLE compressor = nullptr;
   auto success = CreateCompressor(COMPRESS_ALGORITHM_XPRESS_HUFF, nullptr, &compressor);
   if (!success) {
-    MessageBoxA(0, "create compressor fail", "compress fail", MB_OK);
+    MessageBoxA(nullptr, "create compressor fail", "compress fail", MB_OK);
     ExitProcess(255);
   }
 
@@ -35,7 +35,7 @@ std::vector<uint8_t> compress(const std::vector<uint8_t> &raw) {
     DWORD error_code = GetLastError();
 
     if (error_code != ERROR_INSUFFICIENT_BUFFER) {
-      MessageBoxA(0, "unexpected compress error", "compress fail", MB_OK);
+      MessageBoxA(nullptr, "unexpected compress error", "compress fail", MB_OK);
       ExitProcess(255);
     }
 
@@ -45,7 +45,7 @@ std::vector<uint8_t> compress(const std::vector<uint8_t> &raw) {
   success = Compress(compressor, raw.data(), raw.size(), compressed_buffer.data(), compressed_buffer.size(),
                      &compressed_size);
   if (!success) {
-    MessageBoxA(0, "unexpected compress error", "compress fail", MB_OK);
+    MessageBoxA(nullptr, "unexpected compress error", "compress fail", MB_OK);
     ExitProcess(255);
   }
   compressed_buffer.resize(compressed_size, 0);
@@ -80,7 +80,7 @@ int main(int argc, const char *argv[]) {
   packed_section.content(compressed);
   loader_binary->add_section(packed_section, LIEF::PE::PE_SECTION_TYPES::DATA);
 
-  auto builder = LIEF::PE::Builder::Builder(loader_binary.get());
+  auto builder = LIEF::PE::Builder(loader_binary.get());
   builder.build();
   builder.write("compress-packed.exe");
 

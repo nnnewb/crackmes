@@ -1,59 +1,39 @@
-#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include <compressapi.h>
 #include <winnt.h>
+#pragma runtime_checks("", off)
 
-void decompress(BYTE *src, DWORD src_size, BYTE *dest, DWORD dest_size, DWORD &decompressed_size);
-void *load_PE(BYTE *PE_data);
-void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
-void fix_base_reloc(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
+void *load_PE(char *PE_data);
+void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
+void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers);
 int mystrcmp(const char *str1, const char *str2);
-void mymemcpy(BYTE *dest, const BYTE *src, size_t length);
+void mymemcpy(char *dest, const char *src, size_t length);
 
 int _start(void) {
-  BYTE *unpacker_VA = (BYTE *)GetModuleHandleA(NULL);
+  char *unpacker_VA = (char *)GetModuleHandleA(NULL);
 
   IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)unpacker_VA;
   IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(((char *)unpacker_VA) + p_DOS_header->e_lfanew);
   IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)(p_NT_headers + 1);
 
-  BYTE *packed = NULL;
+  char *packed = NULL;
   char packed_section_name[] = ".packed";
 
   for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; i++) {
-    if (mystrcmp((const char *)sections[i].Name, packed_section_name) == 0) {
+    if (mystrcmp(sections[i].Name, packed_section_name) == 0) {
       packed = unpacker_VA + sections[i].VirtualAddress;
       break;
     }
   }
 
   if (packed != NULL) {
-    // first 4 bytes is decompressed size
-    DWORD decompressed_size = *((DWORD *)packed);
-    decompressed_size = (decompressed_size & (0xff << 24)) | (decompressed_size & (0xff << 16)) |
-                        (decompressed_size & (0xff << 8)) | (decompressed_size & 0xff);
-
-    // second 4 bytes is compressed size
-    DWORD compressed_size = *((DWORD *)(packed + 4));
-    compressed_size = (compressed_size & (0xff << 24)) | (compressed_size & (0xff << 16)) |
-                      (compressed_size & (0xff << 8)) | (compressed_size & 0xff);
-
-    // allocate memory
-    BYTE *decompressed = (BYTE *)VirtualAlloc(nullptr, decompressed_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-
-    // decompress
-    DWORD true_decompressed_size = 0;
-    decompress(packed + 8, compressed_size, decompressed, decompressed_size, true_decompressed_size);
-
-    // finally load
-    void (*entrypoint)(void) = (void (*)(void))load_PE(decompressed);
+    void (*entrypoint)(void) = (void (*)(void))load_PE(packed);
     entrypoint();
   }
 
   return 0;
 }
 
-void *load_PE(BYTE *PE_data) {
+void *load_PE(char *PE_data) {
   IMAGE_DOS_HEADER *p_DOS_header = (IMAGE_DOS_HEADER *)PE_data;
   IMAGE_NT_HEADERS *p_NT_headers = (IMAGE_NT_HEADERS *)(PE_data + p_DOS_header->e_lfanew);
 
@@ -64,7 +44,7 @@ void *load_PE(BYTE *PE_data) {
 
   // allocate memory
   // https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
-  BYTE *p_image_base = (BYTE *)VirtualAlloc(NULL, size_of_image, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+  char *p_image_base = (char *)VirtualAlloc(NULL, size_of_image, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
   if (p_image_base == NULL) {
     return NULL;
   }
@@ -78,7 +58,7 @@ void *load_PE(BYTE *PE_data) {
   for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; i++) {
     // calculate the VA we need to copy the content, from the RVA
     // section[i].VirtualAddress is a RVA, mind it
-    BYTE *dest = p_image_base + sections[i].VirtualAddress;
+    char *dest = p_image_base + sections[i].VirtualAddress;
 
     // check if there is Raw data to copy
     if (sections[i].SizeOfRawData > 0) {
@@ -99,7 +79,7 @@ void *load_PE(BYTE *PE_data) {
   VirtualProtect(p_image_base, p_NT_headers->OptionalHeader.SizeOfHeaders, PAGE_READONLY, &oldProtect);
 
   for (int i = 0; i < p_NT_headers->FileHeader.NumberOfSections; ++i) {
-    BYTE *dest = p_image_base + sections[i].VirtualAddress;
+    char *dest = p_image_base + sections[i].VirtualAddress;
     DWORD s_perm = sections[i].Characteristics;
     DWORD v_perm = 0; // flags are not the same between virtal protect and the section header
     if (s_perm & IMAGE_SCN_MEM_EXECUTE) {
@@ -113,7 +93,7 @@ void *load_PE(BYTE *PE_data) {
   return (void *)(p_image_base + entry_point_RVA);
 }
 
-void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
+void fix_iat(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   IMAGE_DATA_DIRECTORY *data_directory = p_NT_headers->OptionalHeader.DataDirectory;
 
   // load the address of the import descriptors array
@@ -123,7 +103,7 @@ void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   // this array is null terminated
   for (int i = 0; import_descriptors[i].OriginalFirstThunk != 0; ++i) {
     // Get the name of the dll, and import it
-    char *module_name = (char *)p_image_base + import_descriptors[i].Name;
+    char *module_name = p_image_base + import_descriptors[i].Name;
     HMODULE import_module = LoadLibraryA(module_name);
     if (import_module == NULL) {
       // panic!
@@ -166,7 +146,7 @@ void fix_iat(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   }
 }
 
-void fix_base_reloc(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
+void fix_base_reloc(char *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   IMAGE_DATA_DIRECTORY *data_directory = p_NT_headers->OptionalHeader.DataDirectory;
 
   // this is how much we shifted the ImageBase
@@ -211,21 +191,6 @@ void fix_base_reloc(BYTE *p_image_base, IMAGE_NT_HEADERS *p_NT_headers) {
   }
 }
 
-void decompress(BYTE *src, DWORD src_size, BYTE *dest, DWORD dest_size, DWORD &decompressed_size) {
-  DECOMPRESSOR_HANDLE decompressor = 0;
-  auto success = CreateDecompressor(COMPRESS_ALGORITHM_XPRESS_HUFF, nullptr, &decompressor);
-  if (!success) {
-    MessageBoxA(nullptr, "create decompressor fail", "decompress fail", MB_OK);
-    ExitProcess(255);
-  }
-
-  success = Decompress(decompressor, src, src_size, dest, dest_size, &decompressed_size);
-  if (!success) {
-    MessageBoxA(nullptr, "decompress fail", "decompress fail", MB_OK);
-    ExitProcess(255);
-  }
-}
-
 int mystrcmp(const char *str1, const char *str2) {
   while (*str1 == *str2 && *str1 != 0) {
     str1++;
@@ -237,7 +202,7 @@ int mystrcmp(const char *str1, const char *str2) {
   return -1;
 }
 
-void mymemcpy(BYTE *dest, const BYTE *src, size_t length) {
+void mymemcpy(char *dest, const char *src, size_t length) {
   for (size_t i = 0; i < length; i++) {
     dest[i] = src[i];
   }
