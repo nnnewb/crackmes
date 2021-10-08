@@ -34,7 +34,7 @@ int main(int argc, const char *argv[]) {
   packed_section.content(program_content);
   loader_binary->add_section(packed_section, LIEF::PE::PE_SECTION_TYPES::DATA);
 
-  auto builder = LIEF::PE::Builder::Builder(loader_binary.get());
+  auto builder = LIEF::PE::Builder(loader_binary.get());
   builder.build();
   builder.write("packed.exe");
 

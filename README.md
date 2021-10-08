@@ -13,11 +13,41 @@ download [LIEF](https://lief-project.github.io/download/) win32 version.
 
 ## build
 
-`vcpkg` required.
+debug variant for example.  `vcpkg` is required. see [vcpkg.io](https://vcpkg.io).
 
 ```shell
-vcpkg intall wxWidgets OpenSSL GTest
+vcpkg install wxWidgets OpenSSL GTest
+```
+
+build LIEF from source.
+
+```shell
+git clone https://github.com/lief-project/LIEF.git
+cd LIEF
 mkdir build
-cmake .. -A Win32 -DCMAKE_TOOLCHAIN_FILE="[path to vcpkg repo]/scripts/buildsystems/vcpkg.cmake" -DLIEF_DIR="[path to LIEF-0.11.5-win32]"
+cmake .. -G "Visual Studio 2019" -A Win32 -DCMAKE_BUILD_TYPE=Debug -DLIEF_PYTHON_API=off -DLIEF_USE_CRT_DEBUG=MDd
+cmake --build . --config Debug --target LIB_LIEF
+cmake --install . --config Debug --prefix LIEF-debug
+mv LIEF-debug ../../ # crackmes/LIEF-debug
+```
+
+build crackmes
+
+```shell
+cd crackmes
+mkdir build
+cmake .. -A Win32 \
+    -DCMAKE_TOOLCHAIN_FILE="[path to vcpkg repo]/scripts/buildsystems/vcpkg.cmake" \
+    -DLIEF_DIR="[absolute path to your LIEF build.]"
+
+# eg.
+#
+# cmake .. \
+#     -G "Visual Studio 2019" \
+#     -A Win32 \
+#     -DCMAKE_TOOLCHAIN_FILE="D:\vcpkg\scripts\buildsystems\vcpkg.cmake" \
+#     -DLIEF_DIR="D:\crackmes\LIEF-debug"
+#
+
 cmake --build . --config Release
 ```

@@ -15,9 +15,7 @@ target_compile_options(packer2_loader PRIVATE /GS-)
 target_link_options(packer2_loader PRIVATE /NODEFAULTLIB /ENTRY:_start)
 
 add_executable(packer2_packer packer.cpp)
-if(MSVC)
-    target_compile_options(packer2_packer PRIVATE /FIiso646.h)
-endif()
+target_compile_options(packer2_packer PRIVATE /FIiso646.h)
 target_include_directories(packer2_packer PRIVATE ${LIEF_INCLUDE_DIRS})
 set_property(TARGET packer2_packer
         PROPERTY CXX_STANDARD 11

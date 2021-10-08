@@ -112,3 +112,4 @@ LIEF-*
 /cmake-build-relwithdebinfo-mingw-32/
 /cmake-build-relwithdebinfo-visual-studio/
 .idea
+.cache
